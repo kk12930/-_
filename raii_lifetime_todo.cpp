@@ -6,7 +6,7 @@
 //   - 或者让 AI 直接在本文件中补全示例代码和测试。
 //
 // 所有 TODO 都围绕一个主题：
-//   “在 UE 风格的 C++ 里，如何用 RAII 和合理的生命周期管理来写出省心、省内存的代码？”
+//   "在 UE 风格的 C++ 里，如何用 RAII 和合理的生命周期管理来写出省心、省内存的代码？"
 
 
 // TODO[RAII-1]: 演示栈对象与堆对象的构造 / 析构顺序
@@ -32,7 +32,7 @@
 // 代码风格提示：
 //   - 使用 `std::cout` 打印；
 //   - 构造函数使用成员初始化列表；
-//   - 尽量在注释中解释“为什么这里会先/后析构”。
+//   - 尽量在注释中解释"为什么这里会先/后析构"。
 
 
 // TODO[RAII-2]: 实现一个简单的 RAII 资源管理类（模拟 UE 中的资源句柄）
@@ -45,10 +45,10 @@
 // 要求 AI 实现：
 //   - 定义一个伪资源类型，例如：
 //       struct FakeTextureHandle { int id; };
-//   - 提供两个“底层 API” 函数（模拟引擎底层）：
+//   - 提供两个"底层 API" 函数（模拟引擎底层）：
 //       FakeTextureHandle AcquireTexture(const std::string& path);
 //       void ReleaseTexture(FakeTextureHandle handle);
-//     它们内部可以只是打印“加载/释放某个 id 的纹理”。
+//     它们内部可以只是打印"加载/释放某个 id 的纹理"。
 //   - 写一个 RAII 包装类 `TextureGuard`：
 //       - 构造函数里调用 `AcquireTexture`；
 //       - 析构函数里自动调用 `ReleaseTexture`；
@@ -62,54 +62,204 @@
 // 语法训练要点：
 //   - 构造/析构函数声明与实现的语法。
 //   - 禁止拷贝、允许移动时 `= delete`、自定义移动构造/赋值的写法。
-//   - 在析构函数中保证“只释放一次”的防御式写法。
+//   - 在析构函数中保证"只释放一次"的防御式写法。
 
 
-// TODO[RAII-3]: 比较“手动管理资源”与“RAII 管理资源”的易错点
+// TODO[RAII-3]: 比较"手动管理资源"与"RAII 管理资源"的易错点
 //
 // 目标：
-//   - 通过对比两段风格相似的代码，感受 RAII 带来的“省心”收益。
+//   - 通过对比两段风格相似的代码，感受 RAII 带来的"省心"收益。
 //
 // 要求 AI 实现：
-//   - 写一段“错误示例”：
+//   - 写一段"错误示例"：
 //       - 使用 `new` / `delete` 管理若干堆对象；
 //       - 在多重早退（if / return）与异常场景中，很容易忘记 delete；
 //       - 注释指出哪些路径会导致内存泄漏或 double delete。
-//   - 写一段“RAII 示例”：
+//   - 写一段"RAII 示例"：
 //       - 使用上一个 TODO 中的 RAII 包装类（或新的类似类）；
 //       - 无论函数在中途哪里 return / 抛异常，资源都能正确释放；
-//       - 注释解释“为什么这里几乎不需要手写清理代码”。
+//       - 注释解释"为什么这里几乎不需要手写清理代码"。
 //
 // 语法训练要点：
 //   - 在 if/for/while 中多处 return 的写法；
 //   - 使用局部对象 + 作用域来控制生命周期。
 
+#include <iostream>
+#include <string>
+#include <stdexcept>
+
+struct FakeTextureHandle {
+    int id;
+    std::string path;
+};
+
+static int g_next_texture_id = 1;
+
+FakeTextureHandle AcquireTexture(const std::string& path) {
+    FakeTextureHandle handle{g_next_texture_id++, path};
+    std::cout << "[TextureAPI] Acquired texture id=" << handle.id 
+              << " path=" << handle.path << std::endl;
+    return handle;
+}
+
+void ReleaseTexture(FakeTextureHandle handle) {
+    std::cout << "[TextureAPI] Released texture id=" << handle.id << std::endl;
+}
+
+class TextureGuard {
+public:
+    explicit TextureGuard(const std::string& path) 
+        : handle_(AcquireTexture(path)) {}
+    
+    ~TextureGuard() {
+        ReleaseTexture(handle_);
+    }
+    
+    TextureGuard(const TextureGuard&) = delete;
+    TextureGuard& operator=(const TextureGuard&) = delete;
+    
+    TextureGuard(TextureGuard&& other) noexcept 
+        : handle_(other.handle_) {
+        other.handle_.id = -1;
+    }
+    
+    TextureGuard& operator=(TextureGuard&& other) noexcept {
+        if (this != &other) {
+            ReleaseTexture(handle_);
+            handle_ = other.handle_;
+            other.handle_.id = -1;
+        }
+        return *this;
+    }
+    
+    int GetId() const { return handle_.id; }
+
+private:
+    FakeTextureHandle handle_;
+};
+
+void ProcessManualResource(bool should_fail, bool early_return) {
+    std::cout << "\n=== Manual Resource Management Demo ===" << std::endl;
+    
+    FakeTextureHandle* tex1 = new FakeTextureHandle(AcquireTexture("hero.png"));
+    std::cout << "[Manual] Created tex1 id=" << tex1->id << std::endl;
+    
+    if (early_return) {
+        std::cout << "[Manual] Early return path - BUG: forgot to delete tex1!" << std::endl;
+        return;
+    }
+    
+    FakeTextureHandle* tex2 = new FakeTextureHandle(AcquireTexture("enemy.png"));
+    std::cout << "[Manual] Created tex2 id=" << tex2->id << std::endl;
+    
+    if (should_fail) {
+        std::cout << "[Manual] Exception path - BUG: both tex1 and tex2 leak!" << std::endl;
+        delete tex2;
+        delete tex1;
+        throw std::runtime_error("Simulated error");
+    }
+    
+    FakeTextureHandle* tex3 = new FakeTextureHandle(AcquireTexture("background.png"));
+    std::cout << "[Manual] Created tex3 id=" << tex3->id << std::endl;
+    
+    if (tex3->id > 5) {
+        std::cout << "[Manual] Another early return - BUG: forgot to delete tex3!" << std::endl;
+        delete tex2;
+        delete tex1;
+        return;
+    }
+    
+    std::cout << "[Manual] Normal cleanup path" << std::endl;
+    delete tex3;
+    delete tex2;
+    delete tex1;
+}
+
+void ProcessRAIIResource(bool should_fail, bool early_return) {
+    std::cout << "\n=== RAII Resource Management Demo ===" << std::endl;
+    
+    TextureGuard tex1("hero.png");
+    std::cout << "[RAII] Created tex1 id=" << tex1.GetId() << std::endl;
+    
+    if (early_return) {
+        std::cout << "[RAII] Early return - tex1 automatically released!" << std::endl;
+        return;
+    }
+    
+    TextureGuard tex2("enemy.png");
+    std::cout << "[RAII] Created tex2 id=" << tex2.GetId() << std::endl;
+    
+    if (should_fail) {
+        std::cout << "[RAII] Exception path - both tex1 and tex2 automatically released!" << std::endl;
+        throw std::runtime_error("Simulated error");
+    }
+    
+    TextureGuard tex3("background.png");
+    std::cout << "[RAII] Created tex3 id=" << tex3.GetId() << std::endl;
+    
+    if (tex3.GetId() > 5) {
+        std::cout << "[RAII] Another early return - tex3 automatically released!" << std::endl;
+        return;
+    }
+    
+    std::cout << "[RAII] End of function - all textures automatically released!" << std::endl;
+}
+
+void DemoRAIIvsManualPitfalls() {
+    std::cout << "Comparing Manual vs RAII Resource Management" << std::endl;
+    std::cout << "This demo shows common pitfalls in manual resource management" << std::endl;
+    std::cout << "and how RAII solves them automatically." << std::endl;
+    
+    try {
+        std::cout << "\n--- Test 1: Early return scenario ---" << std::endl;
+        ProcessManualResource(false, true);
+        std::cout << "[Expected] Manual: tex1 leaked!" << std::endl;
+        
+        ProcessRAIIResource(false, true);
+        std::cout << "[Expected] RAII: tex1 properly released" << std::endl;
+        
+        std::cout << "\n--- Test 2: Exception scenario ---" << std::endl;
+        try {
+            ProcessManualResource(true, false);
+        } catch (const std::exception& e) {
+            std::cout << "[Expected] Manual: properly cleaned up in catch block" << std::endl;
+        }
+        
+        try {
+            ProcessRAIIResource(true, false);
+        } catch (const std::exception& e) {
+            std::cout << "[Expected] RAII: automatically cleaned up" << std::endl;
+        }
+        
+    } catch (const std::exception& e) {
+        std::cerr << "Unexpected exception: " << e.what() << std::endl;
+    }
+}
 
 // TODO[RAII-4]: 与 UE 场景稍微贴近的示例：关卡资源加载与清理（简化版）
 //
 // 目标：
-//   - 模拟一个非常简化的“关卡资源管理器”，
+//   - 模拟一个非常简化的"关卡资源管理器"，
 //     体会在 UE 中如何用 RAII / 对象生命周期来保证资源最终被释放。
 //
 // 要求 AI 实现：
 //   - 定义一个 `LevelResource` 结构体，包含：名字、假装的内存占用大小等。
 //   - 写一个 `LevelResourceGuard` RAII 类：
-//       - 构造函数里从“资源库”中加载一批 `LevelResource`；
-//       - 析构函数里负责“卸载”这些资源（打印日志即可）。
+//       - 构造函数里从"资源库"中加载一批 `LevelResource`；
+//       - 析构函数里负责"卸载"这些资源（打印日志即可）。
 //   - 写一个 `void SimulateLevelLoading();`，流程大致：
 //       - `EnterLevel()`：创建 `LevelResourceGuard`；
-//       - 在内部做一些“游戏逻辑”；
+//       - 在内部做一些"游戏逻辑"；
 //       - 函数结束后，由于作用域结束，`LevelResourceGuard` 析构 → 自动清理。
 //   - 在注释中标出：如果没有 RAII，这些清理逻辑会散落在很多 exit 分支里，
 //     非常容易漏掉。
 //
 // 语法训练要点：
 //   - 组合（成员变量为另一个类）的写法；
-//   - 在复杂函数中用局部对象封装成“一进一出”的资源生命周期。
+//   - 在复杂函数中用局部对象封装成"一进一出"的资源生命周期。
 
 
 // 如需更多练习：
-//   - 可以要求 AI 在每个 TODO 下方再添加一个“空函数签名 + TODO 注释”，
+//   - 可以要求 AI 在每个 TODO 下方再添加一个"空函数签名 + TODO 注释"，
 //     然后你手动根据注释自己实现，再对比 AI 给出的版本。
 //   - 也可以让 AI 生成 Catch2 / GoogleTest 风格的单元测试，用断言替代打印。 
-
