@@ -318,6 +318,96 @@ void DemoManualVsRAII() {
 //   - 组合（成员变量为另一个类）的写法；
 //   - 在复杂函数中用局部对象封装成"一进一出"的资源生命周期。
 
+#include <iostream>
+#include <string>
+#include <vector>
+
+struct LevelResource {
+    std::string name;
+    size_t memorySize;
+    
+    LevelResource(const std::string& n, size_t size) : name(n), memorySize(size) {}
+};
+
+class LevelResourceGuard {
+private:
+    std::vector<LevelResource> loadedResources;
+    std::string levelName;
+
+public:
+    LevelResourceGuard(const std::string& level) : levelName(level) {
+        std::cout << "[LevelResourceGuard] Entering level: " << levelName << std::endl;
+        LoadResources();
+    }
+
+    ~LevelResourceGuard() {
+        UnloadResources();
+        std::cout << "[LevelResourceGuard] Left level: " << levelName << std::endl;
+    }
+
+    LevelResourceGuard(const LevelResourceGuard&) = delete;
+    LevelResourceGuard& operator=(const LevelResourceGuard&) = delete;
+
+private:
+    void LoadResources() {
+        std::cout << "[LevelResourceGuard] Loading resources for level: " << levelName << std::endl;
+        loadedResources.emplace_back("TerrainMesh", 1024 * 1024 * 50);
+        loadedResources.emplace_back("TextureAtlas", 1024 * 1024 * 100);
+        loadedResources.emplace_back("AIBehaviors", 1024 * 1024 * 10);
+        loadedResources.emplace_back("AudioBanks", 1024 * 1024 * 30);
+        
+        size_t totalMemory = 0;
+        for (const auto& res : loadedResources) {
+            std::cout << "  - Loaded: " << res.name << " (" << res.memorySize / 1024 << " KB)" << std::endl;
+            totalMemory += res.memorySize;
+        }
+        std::cout << "  - Total memory: " << totalMemory / 1024 / 1024 << " MB" << std::endl;
+    }
+
+    void UnloadResources() {
+        std::cout << "[LevelResourceGuard] Unloading resources for level: " << levelName << std::endl;
+        for (const auto& res : loadedResources) {
+            std::cout << "  - Unloaded: " << res.name << std::endl;
+        }
+        loadedResources.clear();
+    }
+};
+
+void SimulateLevelLoading() {
+    std::cout << "\n========== RAII-4: Level Resource Loading Demo ==========" << std::endl;
+    
+    std::cout << "\n--- Starting level transition ---\n" << std::endl;
+    
+    // ============================================================
+    // EnterLevel(): 创建 LevelResourceGuard
+    // ============================================================
+    // 这里用 RAII 的方式管理资源：
+    // LevelResourceGuard 构造函数会自动加载资源，
+    // 当函数结束或发生异常时，析构函数会自动清理资源。
+    //
+    // 如果没有 RAII，这些清理逻辑会散落在很多 exit 分支里：
+    //   - if (error) return;
+    //   - if (playerDied) return;
+    //   - if (teleport) return;
+    //   - ... 非常容易漏掉某处的 delete / cleanup
+    // ============================================================
+    LevelResourceGuard guard("ForestLevel");
+    
+    // 在这里做一些"游戏逻辑"
+    std::cout << "\n[GameLogic] Spawning player..." << std::endl;
+    std::cout << "[GameLogic] Initializing AI..." << std::endl;
+    std::cout << "[GameLogic] Playing background music..." << std::endl;
+    
+    std::cout << "\n[GameLogic] Player completed objectives!" << std::endl;
+    
+    // 如果没有 RAII，在这里我们需要手动调用清理函数
+    // guard.UnloadResources();  // 容易忘记！
+    
+    std::cout << "\n--- Level transition complete ---\n" << std::endl;
+    
+    // 当函数结束，guard 超出作用域，析构函数自动被调用
+    // 资源自动被卸载，无需手动干预
+}
 
 // 如需更多练习：
 //   - 可以要求 AI 在每个 TODO 下方再添加一个"空函数签名 + TODO 注释"，
