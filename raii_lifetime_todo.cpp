@@ -34,35 +34,6 @@
 //   - 构造函数使用成员初始化列表；
 //   - 尽量在注释中解释"为什么这里会先/后析构"。
 
-// [RAII-2]: 实现一个简单的 RAII 资源管理类（模拟 UE 中的资源句柄）
-//
-// 目标：
-//   - 通过一个小例子理解 RAII 的核心模式：
-//       Acquire Resource In Constructor, Release In Destructor.
-//   - 体验一下：用 RAII 包装后，逻辑代码里几乎不用再手写 delete / close。
-//
-// 要求 AI 实现：
-//   - 定义一个伪资源类型，例如：
-//       struct FakeTextureHandle { int id; };
-//   - 提供两个"底层 API" 函数（模拟引擎底层）：
-//       FakeTextureHandle AcquireTexture(const std::string& path);
-//       void ReleaseTexture(FakeTextureHandle handle);
-//     它们内部可以只是打印"加载/释放某个 id 的纹理"。
-//   - 写一个 RAII 包装类 `TextureGuard`：
-//       - 构造函数里调用 `AcquireTexture`；
-//       - 析构函数里自动调用 `ReleaseTexture`；
-//       - 禁止拷贝（delete 拷贝构造 / 拷贝赋值）；
-//       - 允许移动（实现移动构造 / 移动赋值，转移所有权）。
-//   - 写一个 `void DemoTextureGuard();` 函数展示用法：
-//       - 在不同的作用域里创建 `TextureGuard`；
-//       - 把 `TextureGuard` 放到 `std::vector` 里再移动出来等；
-//       - 通过打印信息证明整个过程没有重复释放 / 遗漏释放。
-//
-// 语法训练要点：
-//   - 构造/析构函数声明与实现的语法。
-//   - 禁止拷贝、允许移动时 `= delete`、自定义移动构造/赋值的写法。
-//   - 在析构函数中保证"只释放一次"的防御式写法。
-
 #include <iostream>
 #include <string>
 #include <vector>
@@ -101,6 +72,36 @@ void DemoStackAndHeap() {
     std::cout << "\n--- End of DemoStackAndHeap scope ---" << std::endl;
     delete heap2;
 }
+
+// [RAII-2]: 实现一个简单的 RAII 资源管理类（模拟 UE 中的资源句柄）
+//
+// 目标：
+//   - 通过一个小例子理解 RAII 的核心模式：
+//       Acquire Resource In Constructor, Release In Destructor.
+//   - 体验一下：用 RAII 包装后，逻辑代码里几乎不用再手写 delete / close。
+//
+// 要求 AI 实现：
+//   - 定义一个伪资源类型，例如：
+//       struct FakeTextureHandle { int id; };
+//   - 提供两个"底层 API" 函数（模拟引擎底层）：
+//       FakeTextureHandle AcquireTexture(const std::string& path);
+//       void ReleaseTexture(FakeTextureHandle handle);
+//     它们内部可以只是打印"加载/释放某个 id 的纹理"。
+//   - 写一个 RAII 包装类 `TextureGuard`：
+//       - 构造函数里调用 `AcquireTexture`；
+//       - 析构函数里自动调用 `ReleaseTexture`；
+//       - 禁止拷贝（delete 拷贝构造 / 拷贝赋值）；
+//       - 允许移动（实现移动构造 / 移动赋值，转移所有权）。
+//   - 写一个 `void DemoTextureGuard();` 函数展示用法：
+//       - 在不同的作用域里创建 `TextureGuard`；
+//       - 把 `TextureGuard` 放到 `std::vector` 里再移动出来等；
+//       - 通过打印信息证明整个过程没有重复释放 / 遗漏释放。
+//
+// 语法训练要点：
+//   - 构造/析构函数声明与实现的语法。
+//   - 禁止拷贝、允许移动时 `= delete`、自定义移动构造/赋值的写法。
+//   - 在析构函数中保证"只释放一次"的防御式写法。
+
 
 struct FakeTextureHandle {
     int id;
