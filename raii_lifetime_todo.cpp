@@ -32,7 +32,9 @@
 // 代码风格提示：
 //   - 使用 `std::cout` 打印；
 //   - 构造函数使用成员初始化列表；
-//   - 尽量在注释中解释“为什么这里会先/后析构”。
+//   - 尽量在注释中解释"为什么这里会先/后析构"。
+
+
 
 
 // TODO[RAII-2]: 实现一个简单的 RAII 资源管理类（模拟 UE 中的资源句柄）
@@ -67,6 +69,41 @@
 #include <iostream>
 #include <string>
 #include <vector>
+
+class LifecycleLogger {
+public:
+    explicit LifecycleLogger(const std::string& name)
+        : name_(name) {
+        std::cout << "[Constructor] LifecycleLogger '" << name_ 
+                  << "' created at address " << this << std::endl;
+    }
+    
+    ~LifecycleLogger() {
+        std::cout << "[Destructor] LifecycleLogger '" << name_ 
+                  << "' destroyed at address " << this << std::endl;
+    }
+
+private:
+    std::string name_;
+};
+
+void DemoStackAndHeap() {
+    std::cout << "\n=== DemoStackAndHeap ===" << std::endl;
+    
+    std::cout << "\n--- Creating stack objects ---" << std::endl;
+    LifecycleLogger a("a");
+    LifecycleLogger b("b");
+    
+    std::cout << "\n--- Creating heap objects ---" << std::endl;
+    LifecycleLogger* heap1 = new LifecycleLogger("heap1");
+    LifecycleLogger* heap2 = new LifecycleLogger("heap2");
+    
+    std::cout << "\n--- Deleting heap1 ---" << std::endl;
+    delete heap1;
+    
+    std::cout << "\n--- End of DemoStackAndHeap scope ---" << std::endl;
+    delete heap2;
+}
 
 struct FakeTextureHandle {
     int id;
