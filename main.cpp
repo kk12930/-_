@@ -7,6 +7,7 @@
 // 来自各个模块的 Demo 函数声明（先只声明，等模块实现后再调用）
 void DemoStackAndHeap();      // 模块 1：RAII-1 栈 / 堆生命周期
 void DemoTextureGuard();      // 模块 1：RAII-2 资源管理类
+void DemoManualVsRAII();      // 模块 1：RAII-3 手动 vs RAII 对比
 void SimulateLevelLoading();  // 模块 1：RAII-4 关卡资源示例
 
 int main() {
@@ -19,6 +20,9 @@ int main() {
     // 或者实现完 DemoTextureGuard() / SimulateLevelLoading() 后，改成：
     // DemoTextureGuard();
     // SimulateLevelLoading();
+
+    // RAII-3: 手动管理 vs RAII 对比示例
+    DemoManualVsRAII();
 
     return 0;
 }

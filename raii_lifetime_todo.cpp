@@ -64,6 +64,90 @@
 //   - 禁止拷贝、允许移动时 `= delete`、自定义移动构造/赋值的写法。
 //   - 在析构函数中保证"只释放一次"的防御式写法。
 
+#include <iostream>
+#include <string>
+#include <vector>
+
+struct FakeTextureHandle {
+    int id;
+};
+
+static int g_next_texture_id = 1;
+
+FakeTextureHandle AcquireTexture(const std::string& path) {
+    FakeTextureHandle handle{g_next_texture_id++};
+    std::cout << "[AcquireTexture] Loaded texture from '" << path << "' with id " << handle.id << std::endl;
+    return handle;
+}
+
+void ReleaseTexture(FakeTextureHandle handle) {
+    std::cout << "[ReleaseTexture] Releasing texture id " << handle.id << std::endl;
+}
+
+class TextureGuard {
+public:
+    explicit TextureGuard(const std::string& path) 
+        : handle_(AcquireTexture(path)) {}
+    
+    ~TextureGuard() {
+        if (handle_.id != 0) {
+            ReleaseTexture(handle_);
+            handle_.id = 0;
+        }
+    }
+    
+    TextureGuard(const TextureGuard&) = delete;
+    TextureGuard& operator=(const TextureGuard&) = delete;
+    
+    TextureGuard(TextureGuard&& other) noexcept 
+        : handle_(other.handle_) {
+        other.handle_.id = 0;
+    }
+    
+    TextureGuard& operator=(TextureGuard&& other) noexcept {
+        if (this != &other) {
+            if (handle_.id != 0) {
+                ReleaseTexture(handle_);
+            }
+            handle_ = other.handle_;
+            other.handle_.id = 0;
+        }
+        return *this;
+    }
+    
+    int getId() const { return handle_.id; }
+
+private:
+    FakeTextureHandle handle_;
+};
+
+void DemoTextureGuard() {
+    std::cout << "\n=== DemoTextureGuard ===" << std::endl;
+    
+    {
+        std::cout << "\n--- Scope 1: Local TextureGuard ---" << std::endl;
+        TextureGuard tex1("player.png");
+        std::cout << "Using texture id: " << tex1.getId() << std::endl;
+    }
+    
+    {
+        std::cout << "\n--- Scope 2: Vector with move ---" << std::endl;
+        std::vector<TextureGuard> textures;
+        textures.push_back(TextureGuard("enemy.png"));
+        textures.push_back(TextureGuard("background.png"));
+        
+        std::cout << "Vector has " << textures.size() << " textures" << std::endl;
+        
+        TextureGuard moved = std::move(textures[0]);
+        std::cout << "Moved texture id: " << moved.getId() << std::endl;
+        
+        textures.clear();
+        std::cout << "After clear, moved texture still alive" << std::endl;
+    }
+    
+    std::cout << "\n=== DemoTextureGuard done ===" << std::endl;
+}
+
 
 // TODO[RAII-3]: 比较"手动管理资源"与"RAII 管理资源"的易错点
 //
@@ -84,157 +168,99 @@
 //   - 在 if/for/while 中多处 return 的写法；
 //   - 使用局部对象 + 作用域来控制生命周期。
 
-#include <iostream>
-#include <string>
-#include <stdexcept>
-
-struct FakeTextureHandle {
-    int id;
-    std::string path;
-};
-
-static int g_next_texture_id = 1;
-
-FakeTextureHandle AcquireTexture(const std::string& path) {
-    FakeTextureHandle handle{g_next_texture_id++, path};
-    std::cout << "[TextureAPI] Acquired texture id=" << handle.id 
-              << " path=" << handle.path << std::endl;
-    return handle;
+bool LoadGameWithManualManagement(int playerLevel) {
+    std::cout << "\n--- LoadGameWithManualManagement ---" << std::endl;
+    
+    int* playerData = new int(100);
+    int* enemyData = new int(200);
+    int* levelData = new int(300);
+    
+    std::cout << "Allocated: player=" << *playerData 
+              << ", enemy=" << *enemyData 
+              << ", level=" << *levelData << std::endl;
+    
+    if (playerLevel < 0) {
+        std::cout << "ERROR: Invalid player level!" << std::endl;
+        // BUG: 内存泄漏 - 没有 delete 就 return
+        // 正确做法: delete playerData; delete enemyData; delete levelData; return false;
+        return false;
+    }
+    
+    if (playerLevel > 100) {
+        std::cout << "WARNING: Level too high, capping..." << std::endl;
+        // BUG: 内存泄漏 - 忘记释放 enemyData 和 levelData
+        // 正确做法: delete playerData; delete enemyData; delete levelData; return false;
+        return false;
+    }
+    
+    if (playerLevel == 50) {
+        std::cout << "SPECIAL: Level 50 trigger!" << std::endl;
+        // BUG: 内存泄漏 - 忘记释放所有三个对象
+        // 正确做法: delete playerData; delete enemyData; delete levelData; return true;
+        return true;
+    }
+    
+    // 正常路径：释放所有资源
+    delete playerData;
+    delete enemyData;
+    delete levelData;
+    
+    return true;
 }
 
-void ReleaseTexture(FakeTextureHandle handle) {
-    std::cout << "[TextureAPI] Released texture id=" << handle.id << std::endl;
+bool LoadGameWithRAII(int playerLevel) {
+    std::cout << "\n--- LoadGameWithRAII ---" << std::endl;
+    
+    TextureGuard playerData("player.dat");
+    TextureGuard enemyData("enemy.dat");
+    TextureGuard levelData("level.dat");
+    
+    std::cout << "Loaded: player=" << playerData.getId() 
+              << ", enemy=" << enemyData.getId() 
+              << ", level=" << levelData.getId() << std::endl;
+    
+    if (playerLevel < 0) {
+        std::cout << "ERROR: Invalid player level!" << std::endl;
+        // 无需手动释放 - TextureGuard 析构函数会自动释放
+        return false;
+    }
+    
+    if (playerLevel > 100) {
+        std::cout << "WARNING: Level too high, capping..." << std::endl;
+        // 无需手动释放 - TextureGuard 析构函数会自动释放
+        return false;
+    }
+    
+    if (playerLevel == 50) {
+        std::cout << "SPECIAL: Level 50 trigger!" << std::endl;
+        // 无需手动释放 - TextureGuard 析构函数会自动释放
+        return true;
+    }
+    
+    // 无需手动释放 - 函数结束，局部对象自动析构
+    return true;
 }
 
-class TextureGuard {
-public:
-    explicit TextureGuard(const std::string& path) 
-        : handle_(AcquireTexture(path)) {}
+void DemoManualVsRAII() {
+    std::cout << "\n=== DemoManualVsRAII ===" << std::endl;
     
-    ~TextureGuard() {
-        ReleaseTexture(handle_);
-    }
+    std::cout << "\n[Manual Management - Error cases]" << std::endl;
+    LoadGameWithManualManagement(-1);
+    LoadGameWithManualManagement(150);
     
-    TextureGuard(const TextureGuard&) = delete;
-    TextureGuard& operator=(const TextureGuard&) = delete;
+    std::cout << "\n[RAII Management - Same cases]" << std::endl;
+    LoadGameWithRAII(-1);
+    LoadGameWithRAII(150);
     
-    TextureGuard(TextureGuard&& other) noexcept 
-        : handle_(other.handle_) {
-        other.handle_.id = -1;
-    }
+    std::cout << "\n[Manual Management - Normal case]" << std::endl;
+    LoadGameWithManualManagement(10);
     
-    TextureGuard& operator=(TextureGuard&& other) noexcept {
-        if (this != &other) {
-            ReleaseTexture(handle_);
-            handle_ = other.handle_;
-            other.handle_.id = -1;
-        }
-        return *this;
-    }
+    std::cout << "\n[RAII Management - Normal case]" << std::endl;
+    LoadGameWithRAII(10);
     
-    int GetId() const { return handle_.id; }
-
-private:
-    FakeTextureHandle handle_;
-};
-
-void ProcessManualResource(bool should_fail, bool early_return) {
-    std::cout << "\n=== Manual Resource Management Demo ===" << std::endl;
-    
-    FakeTextureHandle* tex1 = new FakeTextureHandle(AcquireTexture("hero.png"));
-    std::cout << "[Manual] Created tex1 id=" << tex1->id << std::endl;
-    
-    if (early_return) {
-        std::cout << "[Manual] Early return path - BUG: forgot to delete tex1!" << std::endl;
-        return;
-    }
-    
-    FakeTextureHandle* tex2 = new FakeTextureHandle(AcquireTexture("enemy.png"));
-    std::cout << "[Manual] Created tex2 id=" << tex2->id << std::endl;
-    
-    if (should_fail) {
-        std::cout << "[Manual] Exception path - BUG: both tex1 and tex2 leak!" << std::endl;
-        delete tex2;
-        delete tex1;
-        throw std::runtime_error("Simulated error");
-    }
-    
-    FakeTextureHandle* tex3 = new FakeTextureHandle(AcquireTexture("background.png"));
-    std::cout << "[Manual] Created tex3 id=" << tex3->id << std::endl;
-    
-    if (tex3->id > 5) {
-        std::cout << "[Manual] Another early return - BUG: forgot to delete tex3!" << std::endl;
-        delete tex2;
-        delete tex1;
-        return;
-    }
-    
-    std::cout << "[Manual] Normal cleanup path" << std::endl;
-    delete tex3;
-    delete tex2;
-    delete tex1;
+    std::cout << "\n=== DemoManualVsRAII done ===" << std::endl;
 }
 
-void ProcessRAIIResource(bool should_fail, bool early_return) {
-    std::cout << "\n=== RAII Resource Management Demo ===" << std::endl;
-    
-    TextureGuard tex1("hero.png");
-    std::cout << "[RAII] Created tex1 id=" << tex1.GetId() << std::endl;
-    
-    if (early_return) {
-        std::cout << "[RAII] Early return - tex1 automatically released!" << std::endl;
-        return;
-    }
-    
-    TextureGuard tex2("enemy.png");
-    std::cout << "[RAII] Created tex2 id=" << tex2.GetId() << std::endl;
-    
-    if (should_fail) {
-        std::cout << "[RAII] Exception path - both tex1 and tex2 automatically released!" << std::endl;
-        throw std::runtime_error("Simulated error");
-    }
-    
-    TextureGuard tex3("background.png");
-    std::cout << "[RAII] Created tex3 id=" << tex3.GetId() << std::endl;
-    
-    if (tex3.GetId() > 5) {
-        std::cout << "[RAII] Another early return - tex3 automatically released!" << std::endl;
-        return;
-    }
-    
-    std::cout << "[RAII] End of function - all textures automatically released!" << std::endl;
-}
-
-void DemoRAIIvsManualPitfalls() {
-    std::cout << "Comparing Manual vs RAII Resource Management" << std::endl;
-    std::cout << "This demo shows common pitfalls in manual resource management" << std::endl;
-    std::cout << "and how RAII solves them automatically." << std::endl;
-    
-    try {
-        std::cout << "\n--- Test 1: Early return scenario ---" << std::endl;
-        ProcessManualResource(false, true);
-        std::cout << "[Expected] Manual: tex1 leaked!" << std::endl;
-        
-        ProcessRAIIResource(false, true);
-        std::cout << "[Expected] RAII: tex1 properly released" << std::endl;
-        
-        std::cout << "\n--- Test 2: Exception scenario ---" << std::endl;
-        try {
-            ProcessManualResource(true, false);
-        } catch (const std::exception& e) {
-            std::cout << "[Expected] Manual: properly cleaned up in catch block" << std::endl;
-        }
-        
-        try {
-            ProcessRAIIResource(true, false);
-        } catch (const std::exception& e) {
-            std::cout << "[Expected] RAII: automatically cleaned up" << std::endl;
-        }
-        
-    } catch (const std::exception& e) {
-        std::cerr << "Unexpected exception: " << e.what() << std::endl;
-    }
-}
 
 // TODO[RAII-4]: 与 UE 场景稍微贴近的示例：关卡资源加载与清理（简化版）
 //
