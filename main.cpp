@@ -1,4 +1,6 @@
-// TODO: 实现两数相加函数 add
+int add(int a, int b) {
+    return a + b;
+}
 int factorial(int n) {
     if (n < 0) {
         return -1;
