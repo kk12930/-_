@@ -88,25 +88,115 @@
 // TODO[RAII-4]: 与 UE 场景稍微贴近的示例：关卡资源加载与清理（简化版）
 //
 // 目标：
-//   - 模拟一个非常简化的“关卡资源管理器”，
+//   - 模拟一个非常简化的"关卡资源管理器"，
 //     体会在 UE 中如何用 RAII / 对象生命周期来保证资源最终被释放。
 //
 // 要求 AI 实现：
 //   - 定义一个 `LevelResource` 结构体，包含：名字、假装的内存占用大小等。
 //   - 写一个 `LevelResourceGuard` RAII 类：
-//       - 构造函数里从“资源库”中加载一批 `LevelResource`；
-//       - 析构函数里负责“卸载”这些资源（打印日志即可）。
+//       - 构造函数里从"资源库"中加载一批 `LevelResource`；
+//       - 析构函数里负责"卸载"这些资源（打印日志即可）。
 //   - 写一个 `void SimulateLevelLoading();`，流程大致：
 //       - `EnterLevel()`：创建 `LevelResourceGuard`；
-//       - 在内部做一些“游戏逻辑”；
+//       - 在内部做一些"游戏逻辑"；
 //       - 函数结束后，由于作用域结束，`LevelResourceGuard` 析构 → 自动清理。
 //   - 在注释中标出：如果没有 RAII，这些清理逻辑会散落在很多 exit 分支里，
 //     非常容易漏掉。
 //
 // 语法训练要点：
 //   - 组合（成员变量为另一个类）的写法；
-//   - 在复杂函数中用局部对象封装成“一进一出”的资源生命周期。
+//   - 在复杂函数中用局部对象封装成"一进一出"的资源生命周期。
 
+#include <iostream>
+#include <string>
+#include <vector>
+
+struct LevelResource {
+    std::string name;
+    size_t memorySize;
+    
+    LevelResource(const std::string& n, size_t size) : name(n), memorySize(size) {}
+};
+
+class LevelResourceGuard {
+private:
+    std::vector<LevelResource> loadedResources;
+    std::string levelName;
+
+public:
+    LevelResourceGuard(const std::string& level) : levelName(level) {
+        std::cout << "[LevelResourceGuard] Entering level: " << levelName << std::endl;
+        LoadResources();
+    }
+
+    ~LevelResourceGuard() {
+        UnloadResources();
+        std::cout << "[LevelResourceGuard] Left level: " << levelName << std::endl;
+    }
+
+    LevelResourceGuard(const LevelResourceGuard&) = delete;
+    LevelResourceGuard& operator=(const LevelResourceGuard&) = delete;
+
+private:
+    void LoadResources() {
+        std::cout << "[LevelResourceGuard] Loading resources for level: " << levelName << std::endl;
+        loadedResources.emplace_back("TerrainMesh", 1024 * 1024 * 50);
+        loadedResources.emplace_back("TextureAtlas", 1024 * 1024 * 100);
+        loadedResources.emplace_back("AIBehaviors", 1024 * 1024 * 10);
+        loadedResources.emplace_back("AudioBanks", 1024 * 1024 * 30);
+        
+        size_t totalMemory = 0;
+        for (const auto& res : loadedResources) {
+            std::cout << "  - Loaded: " << res.name << " (" << res.memorySize / 1024 << " KB)" << std::endl;
+            totalMemory += res.memorySize;
+        }
+        std::cout << "  - Total memory: " << totalMemory / 1024 / 1024 << " MB" << std::endl;
+    }
+
+    void UnloadResources() {
+        std::cout << "[LevelResourceGuard] Unloading resources for level: " << levelName << std::endl;
+        for (const auto& res : loadedResources) {
+            std::cout << "  - Unloaded: " << res.name << std::endl;
+        }
+        loadedResources.clear();
+    }
+};
+
+void SimulateLevelLoading() {
+    std::cout << "\n========== RAII-4: Level Resource Loading Demo ==========" << std::endl;
+    
+    std::cout << "\n--- Starting level transition ---\n" << std::endl;
+    
+    // ============================================================
+    // EnterLevel(): 创建 LevelResourceGuard
+    // ============================================================
+    // 这里用 RAII 的方式管理资源：
+    // LevelResourceGuard 构造函数会自动加载资源，
+    // 当函数结束或发生异常时，析构函数会自动清理资源。
+    //
+    // 如果没有 RAII，这些清理逻辑会散落在很多 exit 分支里：
+    //   - if (error) return;
+    //   - if (playerDied) return;
+    //   - if (teleport) return;
+    //   - ... 非常容易漏掉某处的 delete / cleanup
+    // ============================================================
+    LevelResourceGuard guard("ForestLevel");
+    
+    // 在这里做一些"游戏逻辑"
+    std::cout << "\n[GameLogic] Spawning player..." << std::endl;
+    std::cout << "[GameLogic] Initializing AI..." << std::endl;
+    std::cout << "[GameLogic] Playing background music..." << std::endl;
+    
+    std::cout << "\n[GameLogic] Player completed objectives!" << std::endl;
+    
+    // 如果没有 RAII，在这里我们需要手动调用清理函数
+    // guard.UnloadResources();  // 容易忘记！
+    
+    std::cout << "\n--- Level transition complete ---\n" << std::endl;
+    
+    // 当函数结束，guard 超出作用域，析构函数自动被调用
+    // 资源自动被卸载，无需手动干预
+}
 
 // 如需更多练习：
 //   - 可以要求 AI 在每个 TODO 下方再添加一个“空函数签名 + TODO 注释”，
