@@ -1,5 +1,8 @@
 // TODO: 实现两数相加函数 add
 int factorial(int n) {
+    if (n < 0) {
+        return -1;
+    }
     if (n <= 1) {
         return 1;
     }
