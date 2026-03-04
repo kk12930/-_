@@ -9,7 +9,7 @@
 //   "在 UE 风格的 C++ 里，如何用 RAII 和合理的生命周期管理来写出省心、省内存的代码？"
 
 
-// TODO[RAII-1]: 演示栈对象与堆对象的构造 / 析构顺序
+// [RAII-1]: 演示栈对象与堆对象的构造 / 析构顺序
 //
 // 目标：
 //   - 让我直观看到：
@@ -34,8 +34,7 @@
 //   - 构造函数使用成员初始化列表；
 //   - 尽量在注释中解释"为什么这里会先/后析构"。
 
-
-// TODO[RAII-2]: 实现一个简单的 RAII 资源管理类（模拟 UE 中的资源句柄）
+// [RAII-2]: 实现一个简单的 RAII 资源管理类（模拟 UE 中的资源句柄）
 //
 // 目标：
 //   - 通过一个小例子理解 RAII 的核心模式：
@@ -67,6 +66,41 @@
 #include <iostream>
 #include <string>
 #include <vector>
+
+class LifecycleLogger {
+public:
+    explicit LifecycleLogger(const std::string& name)
+        : name_(name) {
+        std::cout << "[Constructor] LifecycleLogger '" << name_ 
+                  << "' created at address " << this << std::endl;
+    }
+    
+    ~LifecycleLogger() {
+        std::cout << "[Destructor] LifecycleLogger '" << name_ 
+                  << "' destroyed at address " << this << std::endl;
+    }
+
+private:
+    std::string name_;
+};
+
+void DemoStackAndHeap() {
+    std::cout << "\n=== DemoStackAndHeap ===" << std::endl;
+    
+    std::cout << "\n--- Creating stack objects ---" << std::endl;
+    LifecycleLogger a("a");
+    LifecycleLogger b("b");
+    
+    std::cout << "\n--- Creating heap objects ---" << std::endl;
+    LifecycleLogger* heap1 = new LifecycleLogger("heap1");
+    LifecycleLogger* heap2 = new LifecycleLogger("heap2");
+    
+    std::cout << "\n--- Deleting heap1 ---" << std::endl;
+    delete heap1;
+    
+    std::cout << "\n--- End of DemoStackAndHeap scope ---" << std::endl;
+    delete heap2;
+}
 
 struct FakeTextureHandle {
     int id;
@@ -149,7 +183,7 @@ void DemoTextureGuard() {
 }
 
 
-// TODO[RAII-3]: 比较"手动管理资源"与"RAII 管理资源"的易错点
+// [RAII-3]: 比较"手动管理资源"与"RAII 管理资源"的易错点
 //
 // 目标：
 //   - 通过对比两段风格相似的代码，感受 RAII 带来的"省心"收益。
@@ -262,7 +296,7 @@ void DemoManualVsRAII() {
 }
 
 
-// TODO[RAII-4]: 与 UE 场景稍微贴近的示例：关卡资源加载与清理（简化版）
+// [RAII-4]: 与 UE 场景稍微贴近的示例：关卡资源加载与清理（简化版）
 //
 // 目标：
 //   - 模拟一个非常简化的"关卡资源管理器"，
