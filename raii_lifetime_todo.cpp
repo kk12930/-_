@@ -62,27 +62,204 @@
 // 语法训练要点：
 //   - 构造/析构函数声明与实现的语法。
 //   - 禁止拷贝、允许移动时 `= delete`、自定义移动构造/赋值的写法。
-//   - 在析构函数中保证“只释放一次”的防御式写法。
+//   - 在析构函数中保证"只释放一次"的防御式写法。
+
+#include <iostream>
+#include <string>
+#include <vector>
+
+struct FakeTextureHandle {
+    int id;
+};
+
+static int g_next_texture_id = 1;
+
+FakeTextureHandle AcquireTexture(const std::string& path) {
+    FakeTextureHandle handle{g_next_texture_id++};
+    std::cout << "[AcquireTexture] Loaded texture from '" << path << "' with id " << handle.id << std::endl;
+    return handle;
+}
+
+void ReleaseTexture(FakeTextureHandle handle) {
+    std::cout << "[ReleaseTexture] Releasing texture id " << handle.id << std::endl;
+}
+
+class TextureGuard {
+public:
+    explicit TextureGuard(const std::string& path) 
+        : handle_(AcquireTexture(path)) {}
+    
+    ~TextureGuard() {
+        if (handle_.id != 0) {
+            ReleaseTexture(handle_);
+            handle_.id = 0;
+        }
+    }
+    
+    TextureGuard(const TextureGuard&) = delete;
+    TextureGuard& operator=(const TextureGuard&) = delete;
+    
+    TextureGuard(TextureGuard&& other) noexcept 
+        : handle_(other.handle_) {
+        other.handle_.id = 0;
+    }
+    
+    TextureGuard& operator=(TextureGuard&& other) noexcept {
+        if (this != &other) {
+            if (handle_.id != 0) {
+                ReleaseTexture(handle_);
+            }
+            handle_ = other.handle_;
+            other.handle_.id = 0;
+        }
+        return *this;
+    }
+    
+    int getId() const { return handle_.id; }
+
+private:
+    FakeTextureHandle handle_;
+};
+
+void DemoTextureGuard() {
+    std::cout << "\n=== DemoTextureGuard ===" << std::endl;
+    
+    {
+        std::cout << "\n--- Scope 1: Local TextureGuard ---" << std::endl;
+        TextureGuard tex1("player.png");
+        std::cout << "Using texture id: " << tex1.getId() << std::endl;
+    }
+    
+    {
+        std::cout << "\n--- Scope 2: Vector with move ---" << std::endl;
+        std::vector<TextureGuard> textures;
+        textures.push_back(TextureGuard("enemy.png"));
+        textures.push_back(TextureGuard("background.png"));
+        
+        std::cout << "Vector has " << textures.size() << " textures" << std::endl;
+        
+        TextureGuard moved = std::move(textures[0]);
+        std::cout << "Moved texture id: " << moved.getId() << std::endl;
+        
+        textures.clear();
+        std::cout << "After clear, moved texture still alive" << std::endl;
+    }
+    
+    std::cout << "\n=== DemoTextureGuard done ===" << std::endl;
+}
 
 
-// TODO[RAII-3]: 比较“手动管理资源”与“RAII 管理资源”的易错点
+// TODO[RAII-3]: 比较"手动管理资源"与"RAII 管理资源"的易错点
 //
 // 目标：
-//   - 通过对比两段风格相似的代码，感受 RAII 带来的“省心”收益。
+//   - 通过对比两段风格相似的代码，感受 RAII 带来的"省心"收益。
 //
 // 要求 AI 实现：
-//   - 写一段“错误示例”：
+//   - 写一段"错误示例"：
 //       - 使用 `new` / `delete` 管理若干堆对象；
 //       - 在多重早退（if / return）与异常场景中，很容易忘记 delete；
 //       - 注释指出哪些路径会导致内存泄漏或 double delete。
-//   - 写一段“RAII 示例”：
+//   - 写一段"RAII 示例"：
 //       - 使用上一个 TODO 中的 RAII 包装类（或新的类似类）；
 //       - 无论函数在中途哪里 return / 抛异常，资源都能正确释放；
-//       - 注释解释“为什么这里几乎不需要手写清理代码”。
+//       - 注释解释"为什么这里几乎不需要手写清理代码"。
 //
 // 语法训练要点：
 //   - 在 if/for/while 中多处 return 的写法；
 //   - 使用局部对象 + 作用域来控制生命周期。
+
+bool LoadGameWithManualManagement(int playerLevel) {
+    std::cout << "\n--- LoadGameWithManualManagement ---" << std::endl;
+    
+    int* playerData = new int(100);
+    int* enemyData = new int(200);
+    int* levelData = new int(300);
+    
+    std::cout << "Allocated: player=" << *playerData 
+              << ", enemy=" << *enemyData 
+              << ", level=" << *levelData << std::endl;
+    
+    if (playerLevel < 0) {
+        std::cout << "ERROR: Invalid player level!" << std::endl;
+        // BUG: 内存泄漏 - 没有 delete 就 return
+        // 正确做法: delete playerData; delete enemyData; delete levelData; return false;
+        return false;
+    }
+    
+    if (playerLevel > 100) {
+        std::cout << "WARNING: Level too high, capping..." << std::endl;
+        // BUG: 内存泄漏 - 忘记释放 enemyData 和 levelData
+        // 正确做法: delete playerData; delete enemyData; delete levelData; return false;
+        return false;
+    }
+    
+    if (playerLevel == 50) {
+        std::cout << "SPECIAL: Level 50 trigger!" << std::endl;
+        // BUG: 内存泄漏 - 忘记释放所有三个对象
+        // 正确做法: delete playerData; delete enemyData; delete levelData; return true;
+        return true;
+    }
+    
+    // 正常路径：释放所有资源
+    delete playerData;
+    delete enemyData;
+    delete levelData;
+    
+    return true;
+}
+
+bool LoadGameWithRAII(int playerLevel) {
+    std::cout << "\n--- LoadGameWithRAII ---" << std::endl;
+    
+    TextureGuard playerData("player.dat");
+    TextureGuard enemyData("enemy.dat");
+    TextureGuard levelData("level.dat");
+    
+    std::cout << "Loaded: player=" << playerData.getId() 
+              << ", enemy=" << enemyData.getId() 
+              << ", level=" << levelData.getId() << std::endl;
+    
+    if (playerLevel < 0) {
+        std::cout << "ERROR: Invalid player level!" << std::endl;
+        // 无需手动释放 - TextureGuard 析构函数会自动释放
+        return false;
+    }
+    
+    if (playerLevel > 100) {
+        std::cout << "WARNING: Level too high, capping..." << std::endl;
+        // 无需手动释放 - TextureGuard 析构函数会自动释放
+        return false;
+    }
+    
+    if (playerLevel == 50) {
+        std::cout << "SPECIAL: Level 50 trigger!" << std::endl;
+        // 无需手动释放 - TextureGuard 析构函数会自动释放
+        return true;
+    }
+    
+    // 无需手动释放 - 函数结束，局部对象自动析构
+    return true;
+}
+
+void DemoManualVsRAII() {
+    std::cout << "\n=== DemoManualVsRAII ===" << std::endl;
+    
+    std::cout << "\n[Manual Management - Error cases]" << std::endl;
+    LoadGameWithManualManagement(-1);
+    LoadGameWithManualManagement(150);
+    
+    std::cout << "\n[RAII Management - Same cases]" << std::endl;
+    LoadGameWithRAII(-1);
+    LoadGameWithRAII(150);
+    
+    std::cout << "\n[Manual Management - Normal case]" << std::endl;
+    LoadGameWithManualManagement(10);
+    
+    std::cout << "\n[RAII Management - Normal case]" << std::endl;
+    LoadGameWithRAII(10);
+    
+    std::cout << "\n=== DemoManualVsRAII done ===" << std::endl;
+}
 
 
 // TODO[RAII-4]: 与 UE 场景稍微贴近的示例：关卡资源加载与清理（简化版）
